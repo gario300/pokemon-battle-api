@@ -115,7 +115,8 @@ export const setupSocketControllers = (io: Server) => {
       try {
         const lobby = await disconnect.execute(socket.id);
         if (lobby) {
-          if (lobby.players.every(p => !p.isConnected) && (lobby.status === 'battling' || lobby.status === 'ready')) {
+          const allOut = lobby.players.length === 0 || lobby.players.every(p => !p.isConnected);
+          if (allOut) {
             const freshLobby = await lobbyRepo.hardReset();
             syncLobbyState(freshLobby);
           } else {
