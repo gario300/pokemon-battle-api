@@ -37,6 +37,7 @@ backend/
 │   │   ├── socket/           # Socket.IO event controllers
 │   │   └── web/              # Express routes and middlewares
 │   └── index.ts              # Entry point
+├── tests/                    # Unit tests
 └── package.json
 ```
 
@@ -79,5 +80,6 @@ npx vitest run
 ## 🌟 Key Features
 
 - **Automated Lifecycle:** The server automatically resets the lobby document immediately after a match concludes, ensuring no "zombie" states.
+- **Fair Play Victory Logic:** If the 60-second turn timer expires, the server declares a winner based on player presence. The player who stayed in the game always wins over a disconnected opponent.
 - **Atomic Attacks:** Logical locks prevent race conditions during concurrent turn processing.
-- **Resilient Sockets:** Handles disconnections by preserving state in MongoDB. If all players leave an active battle, the lobby is instantly cleared.
+- **Resilient Sockets:** Handles disconnections by preserving state in MongoDB. If all players leave, the lobby is instantly cleared.

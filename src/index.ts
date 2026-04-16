@@ -32,7 +32,6 @@ const startServer = async () => {
   await connectDB();
   
   server.listen(Number(config.PORT), config.HOST, () => {
-    console.log(`Server running on http://${config.HOST}:${config.PORT}`);
   });
 };
 
