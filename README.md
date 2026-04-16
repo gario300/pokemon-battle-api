@@ -94,6 +94,7 @@ npx vitest
 ## 🌟 Key Features Implemented
 
 - **Atomic Attacks (Mutex):** The backend uses a logical lock (`isProcessingTurn`) in MongoDB to prevent race conditions if multiple attack requests are received simultaneously.
-- **Inactivity Penalties:** A 2-minute strict server-side timer starts on every turn. If a player fails to attack, the `TimeoutUseCase` automatically defaults the match, granting the win to the active player.
+- **Proactive Timeout Resolution:** A strict 2-minute server-side timer starts on every turn. If the timer expires, the backend proactively declares a winner (the opponent of the inactive player) to ensure the battle always concludes.
+- **Automatic Stale Cleanup:** The system detects and resets lobbies that have been inactive for more than 5 minutes, preventing "ghost" sessions from blocking new players.
 - **Robust Reconnection:** Players are tracked by a UUID `sessionId`. If their WebSocket disconnects, the state is preserved in MongoDB. When they reconnect with the same `sessionId`, they resume the exact turn and HP state.
 - **Global Error Handling:** All HTTP and external API errors are caught by a centralized Express middleware to ensure the server never crashes unexpectedly.

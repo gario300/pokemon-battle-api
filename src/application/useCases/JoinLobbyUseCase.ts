@@ -6,15 +6,8 @@ export class JoinLobbyUseCase {
   constructor(private lobbyRepo: LobbyRepository) {}
 
   async execute(sessionId: string, socketId: string, nickname: string): Promise<Lobby> {
+    // lobbyRepo.getGlobalLobby() now handles auto-resetting finished matches.
     let lobby = await this.lobbyRepo.getGlobalLobby();
-
-    if (lobby.status === 'finished') {
-      lobby.players = [];
-      lobby.status = 'waiting';
-      lobby.winnerSessionId = null;
-      lobby.currentTurnSessionId = null;
-      lobby.turnExpiresAt = null;
-    }
 
     const existingPlayerIndex = lobby.players.findIndex(p => p.sessionId === sessionId);
 

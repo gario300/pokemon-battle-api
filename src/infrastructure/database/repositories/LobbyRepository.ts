@@ -2,34 +2,45 @@ import { Lobby } from '../../../domain/models/Lobby';
 import { LobbyModel } from '../models/LobbyModel';
 
 export class LobbyRepository {
-  /**
-   * We assume there's only ONE global lobby for this challenge.
-   * If it doesn't exist, we create it.
-   */
   async getGlobalLobby(): Promise<Lobby> {
-    let lobby = await LobbyModel.findOne();
-    if (!lobby) {
-      lobby = await LobbyModel.create({
-        status: 'waiting',
-        players: [],
-        currentTurnSessionId: null,
-        turnExpiresAt: null,
-        winnerSessionId: null,
-        isProcessingTurn: false
-      });
+    const lobbies = await LobbyModel.find();
+    
+    // Hard reset if more than one lobby or if it's in a 'finished' state
+    if (lobbies.length > 1 || (lobbies[0] && lobbies[0].status === 'finished')) {
+      console.log("Inconsistent lobby state detected. Wiping database.");
+      await LobbyModel.deleteMany({});
+      return this.createFreshLobby();
     }
-    return lobby.toObject();
+
+    if (lobbies.length === 0) {
+      return this.createFreshLobby();
+    }
+    
+    return lobbies[0].toObject();
+  }
+
+  private async createFreshLobby(): Promise<Lobby> {
+    const newLobby = await LobbyModel.create({
+      status: 'waiting',
+      players: [],
+      currentTurnSessionId: null,
+      turnExpiresAt: null,
+      winnerSessionId: null,
+      isProcessingTurn: false
+    });
+    return newLobby.toObject();
   }
 
   async save(lobby: Lobby): Promise<Lobby> {
-    let updatedLobby;
-    if (lobby._id) {
-      updatedLobby = await LobbyModel.findByIdAndUpdate(lobby._id, lobby, { new: true });
-    } else {
-      updatedLobby = await LobbyModel.create(lobby);
-    }
+    // Upsert to ensure we only have one document
+    const updatedLobby = await LobbyModel.findOneAndUpdate({}, lobby, { new: true, upsert: true });
     if (!updatedLobby) throw new Error('Could not save lobby');
     return updatedLobby.toObject();
+  }
+
+  async hardReset(): Promise<Lobby> {
+    await LobbyModel.deleteMany({});
+    return await this.getGlobalLobby();
   }
 
   async findBySessionId(sessionId: string): Promise<Lobby | null> {

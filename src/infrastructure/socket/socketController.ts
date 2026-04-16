@@ -5,9 +5,7 @@ import { AssignPokemonUseCase } from '../../application/useCases/AssignPokemonUs
 import { SetReadyUseCase } from '../../application/useCases/SetReadyUseCase';
 import { AttackUseCase } from '../../application/useCases/AttackUseCase';
 import { DisconnectUseCase } from '../../application/useCases/DisconnectUseCase';
-import { TimeoutUseCase } from '../../application/useCases/TimeoutUseCase';
-
-const timers: Record<string, NodeJS.Timeout> = {};
+import { FinishByTimeoutUseCase } from '../../application/useCases/FinishByTimeoutUseCase';
 
 export const setupSocketControllers = (io: Server) => {
   const lobbyRepo = new LobbyRepository();
@@ -17,34 +15,33 @@ export const setupSocketControllers = (io: Server) => {
   const setReady = new SetReadyUseCase(lobbyRepo);
   const attack = new AttackUseCase(lobbyRepo);
   const disconnect = new DisconnectUseCase(lobbyRepo);
-  const timeout = new TimeoutUseCase(lobbyRepo);
+  const finishByTimeout = new FinishByTimeoutUseCase(lobbyRepo);
 
-  const startTurnTimer = (sessionId: string, lobbyId: string) => {
-    if (timers[lobbyId]) clearTimeout(timers[lobbyId]);
+  const syncLobbyState = (lobby: any) => {
+    io.emit('lobby_status', lobby);
+  };
+
+  const finalizeAndResetServer = async (finishedLobby: any) => {
+    // 1. First, send the 'finished' state so clients can capture the local snapshot
+    syncLobbyState(finishedLobby);
+    console.log(`Match finished. Informing clients.`);
     
-    timers[lobbyId] = setTimeout(async () => {
-      try {
-        const updatedLobby = await timeout.execute(sessionId);
-        if (updatedLobby) {
-          io.emit('lobby_status', updatedLobby);
-          io.emit('battle_end', { winnerSessionId: updatedLobby.winnerSessionId, reason: 'timeout' });
-        }
-      } catch (err) {
-        console.error('Error on turn timeout', err);
-      }
-    }, 120000);
+    // 2. IMMEDIATELY clear the lobby from DB and memory
+    try {
+      const freshLobby = await lobbyRepo.hardReset();
+      // 3. Send the 'waiting' state so the server is ready for next players immediately
+      syncLobbyState(freshLobby);
+      console.log("Server state reset to 'waiting' instantly. Lobby is free.");
+    } catch (err) {
+      console.error("Critical Reset Error:", err);
+    }
   };
 
   io.on('connection', (socket: Socket) => {
     socket.on('join_lobby', async (data: { sessionId: string, nickname: string }) => {
       try {
         const lobby = await joinLobby.execute(data.sessionId, socket.id, data.nickname);
-        io.emit('lobby_status', lobby);
-        
-        const player = lobby.players.find(p => p.sessionId === data.sessionId);
-        if (player && player.team.length > 0 && lobby.status === 'battling') {
-          socket.broadcast.emit('opponent_reconnected', { sessionId: data.sessionId });
-        }
+        syncLobbyState(lobby);
       } catch (err: any) {
         socket.emit('error', { message: err.message });
       }
@@ -52,9 +49,19 @@ export const setupSocketControllers = (io: Server) => {
 
     socket.on('assign_pokemon', async (data: { sessionId: string }) => {
       try {
-        const team = await assignPokemon.execute(data.sessionId);
+        await assignPokemon.execute(data.sessionId);
         const lobby = await lobbyRepo.getGlobalLobby();
-        io.emit('lobby_status', lobby);
+        syncLobbyState(lobby);
+      } catch (err: any) {
+        socket.emit('error', { message: err.message });
+      }
+    });
+
+    socket.on('reassign_pokemon', async (data: { sessionId: string }) => {
+      try {
+        await assignPokemon.execute(data.sessionId, true);
+        const lobby = await lobbyRepo.getGlobalLobby();
+        syncLobbyState(lobby);
       } catch (err: any) {
         socket.emit('error', { message: err.message });
       }
@@ -63,11 +70,9 @@ export const setupSocketControllers = (io: Server) => {
     socket.on('ready', async (data: { sessionId: string }) => {
       try {
         const lobby = await setReady.execute(data.sessionId);
-        io.emit('lobby_status', lobby);
-
+        syncLobbyState(lobby);
         if (lobby.status === 'battling') {
           io.emit('battle_start', lobby);
-          startTurnTimer(lobby.currentTurnSessionId!, lobby._id!.toString());
         }
       } catch (err: any) {
         socket.emit('error', { message: err.message });
@@ -76,31 +81,35 @@ export const setupSocketControllers = (io: Server) => {
 
     socket.on('attack', async (data: { sessionId: string }) => {
       try {
-        const lobbyBefore = await lobbyRepo.getGlobalLobby();
-        
         const result = await attack.execute(data.sessionId);
-
-        if (timers[lobbyBefore._id!.toString()]) {
-          clearTimeout(timers[lobbyBefore._id!.toString()]);
-        }
-
-        io.emit('turn_result', {
-          damage: result.damageDealt,
-          defenderHpRemaining: result.defenderHpRemaining,
-          defenderFainted: result.defenderFainted,
-          newDefenderIndex: result.newDefenderIndex,
-          attackerSessionId: data.sessionId,
-          lobby: result.lobby
-        });
-
         if (result.battleOver) {
-          io.emit('battle_end', { winnerSessionId: result.winnerSessionId, reason: 'fainted' });
+          await finalizeAndResetServer(result.lobby);
         } else {
-          startTurnTimer(result.lobby.currentTurnSessionId!, result.lobby._id!.toString());
+          io.emit('turn_result', {
+            damage: result.damageDealt,
+            defenderHpRemaining: result.defenderHpRemaining,
+            defenderFainted: result.defenderFainted,
+            newDefenderIndex: result.newDefenderIndex,
+            attackerSessionId: data.sessionId,
+            lobby: result.lobby
+          });
         }
-
       } catch (err: any) {
         socket.emit('error', { message: err.message });
+      }
+    });
+
+    socket.on('turn_timeout', async (data: { sessionId: string }) => {
+      try {
+        const lobby = await lobbyRepo.getGlobalLobby();
+        if (lobby.status === 'battling') {
+          const updatedLobby = await finishByTimeout.execute(data.sessionId);
+          if (updatedLobby) {
+            await finalizeAndResetServer(updatedLobby);
+          }
+        }
+      } catch (err: any) {
+        console.error('Turn timeout error:', err.message);
       }
     });
 
@@ -108,7 +117,13 @@ export const setupSocketControllers = (io: Server) => {
       try {
         const lobby = await disconnect.execute(socket.id);
         if (lobby) {
-          io.emit('lobby_status', lobby);
+          if (lobby.players.every(p => !p.isConnected) && lobby.status === 'battling') {
+            console.log("All players disconnected during battle. Instant reset.");
+            const freshLobby = await lobbyRepo.hardReset();
+            syncLobbyState(freshLobby);
+          } else {
+            syncLobbyState(lobby);
+          }
           socket.broadcast.emit('opponent_disconnected', { socketId: socket.id });
         }
       } catch (err) {

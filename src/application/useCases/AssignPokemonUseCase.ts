@@ -5,13 +5,17 @@ import { Pokemon } from '../../domain/models/Pokemon';
 export class AssignPokemonUseCase {
   constructor(private lobbyRepo: LobbyRepository) {}
 
-  async execute(sessionId: string): Promise<Pokemon[]> {
+  async execute(sessionId: string, force: boolean = false): Promise<Pokemon[]> {
     let lobby = await this.lobbyRepo.getGlobalLobby();
     
     const playerIndex = lobby.players.findIndex(p => p.sessionId === sessionId);
     if (playerIndex === -1) throw new Error('Player not found in lobby');
+
+    if (lobby.status === 'battling') {
+      throw new Error('Cannot change team during battle');
+    }
     
-    if (lobby.players[playerIndex].team.length > 0) {
+    if (lobby.players[playerIndex].team.length > 0 && !force) {
       return lobby.players[playerIndex].team;
     }
 
@@ -54,6 +58,7 @@ export class AssignPokemonUseCase {
 
     lobby.players[playerIndex].team = team;
     lobby.players[playerIndex].activePokemonIndex = 0;
+    lobby.players[playerIndex].isReady = false; // Reset ready status on change
     
     await this.lobbyRepo.save(lobby);
 

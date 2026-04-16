@@ -76,7 +76,7 @@ export class AttackUseCase {
 
       if (lobby.status === 'battling') {
         lobby.currentTurnSessionId = defender.sessionId;
-        lobby.turnExpiresAt = new Date(Date.now() + 120000);
+        lobby.turnExpiresAt = new Date(Date.now() + 60000); // 1 MINUTE
       }
 
       lobby.isProcessingTurn = false;
