@@ -23,7 +23,7 @@ export class SetReadyUseCase {
       const firstPlayer = BattleService.determineFirstTurn(lobby.players);
       lobby.currentTurnSessionId = firstPlayer.sessionId;
 
-      lobby.turnExpiresAt = new Date(Date.now() + 60000); // 1 MINUTE
+      lobby.turnExpiresAt = new Date(Date.now() + 60000);
     }
 
     return await this.lobbyRepo.save(lobby);

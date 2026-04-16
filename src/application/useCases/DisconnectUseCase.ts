@@ -9,7 +9,17 @@ export class DisconnectUseCase {
     const playerIndex = lobby.players.findIndex(p => p.socketId === socketId);
     if (playerIndex === -1) return null;
 
-    lobby.players[playerIndex].isConnected = false;
+    if (lobby.status === 'battling') {
+      lobby.players[playerIndex].isConnected = false;
+    } else {
+      lobby.players.splice(playerIndex, 1);
+      
+      if (lobby.players.length > 0) {
+        lobby.players[0].isReady = false;
+      }
+      
+      lobby.status = 'waiting';
+    }
 
     return await this.lobbyRepo.save(lobby);
   }

@@ -5,9 +5,7 @@ export class LobbyRepository {
   async getGlobalLobby(): Promise<Lobby> {
     const lobbies = await LobbyModel.find();
     
-    // Hard reset if more than one lobby or if it's in a 'finished' state
     if (lobbies.length > 1 || (lobbies[0] && lobbies[0].status === 'finished')) {
-      console.log("Inconsistent lobby state detected. Wiping database.");
       await LobbyModel.deleteMany({});
       return this.createFreshLobby();
     }
@@ -32,7 +30,6 @@ export class LobbyRepository {
   }
 
   async save(lobby: Lobby): Promise<Lobby> {
-    // Upsert to ensure we only have one document
     const updatedLobby = await LobbyModel.findOneAndUpdate({}, lobby, { new: true, upsert: true });
     if (!updatedLobby) throw new Error('Could not save lobby');
     return updatedLobby.toObject();

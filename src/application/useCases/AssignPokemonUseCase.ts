@@ -58,7 +58,7 @@ export class AssignPokemonUseCase {
 
     lobby.players[playerIndex].team = team;
     lobby.players[playerIndex].activePokemonIndex = 0;
-    lobby.players[playerIndex].isReady = false; // Reset ready status on change
+    lobby.players[playerIndex].isReady = false;
     
     await this.lobbyRepo.save(lobby);
 

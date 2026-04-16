@@ -10,12 +10,22 @@ export class FinishByTimeoutUseCase {
       return null;
     }
 
+    const attackerIndex = lobby.players.findIndex(p => p.sessionId === sessionId);
+    const opponentIndex = attackerIndex === 0 ? 1 : 0;
+    
+    const attacker = lobby.players[attackerIndex];
+    const opponent = lobby.players[opponentIndex];
+
     lobby.status = 'finished';
-    
-    const opponentIndex = lobby.players.findIndex(p => p.sessionId !== sessionId);
-    const winner = lobby.players[opponentIndex];
-    
-    lobby.winnerSessionId = winner ? winner.sessionId : null;
+
+    if (attacker.isConnected && !opponent.isConnected) {
+      lobby.winnerSessionId = attacker.sessionId;
+    } else if (!attacker.isConnected && opponent.isConnected) {
+      lobby.winnerSessionId = opponent.sessionId;
+    } else {
+      lobby.winnerSessionId = opponent.sessionId;
+    }
+
     lobby.currentTurnSessionId = null;
     lobby.turnExpiresAt = null;
     lobby.isProcessingTurn = false;

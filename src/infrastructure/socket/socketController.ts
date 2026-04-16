@@ -22,18 +22,12 @@ export const setupSocketControllers = (io: Server) => {
   };
 
   const finalizeAndResetServer = async (finishedLobby: any) => {
-    // 1. First, send the 'finished' state so clients can capture the local snapshot
     syncLobbyState(finishedLobby);
-    console.log(`Match finished. Informing clients.`);
     
-    // 2. IMMEDIATELY clear the lobby from DB and memory
     try {
       const freshLobby = await lobbyRepo.hardReset();
-      // 3. Send the 'waiting' state so the server is ready for next players immediately
       syncLobbyState(freshLobby);
-      console.log("Server state reset to 'waiting' instantly. Lobby is free.");
     } catch (err) {
-      console.error("Critical Reset Error:", err);
     }
   };
 
@@ -42,6 +36,11 @@ export const setupSocketControllers = (io: Server) => {
       try {
         const lobby = await joinLobby.execute(data.sessionId, socket.id, data.nickname);
         syncLobbyState(lobby);
+        
+        const player = lobby.players.find(p => p.sessionId === data.sessionId);
+        if (player && player.team.length > 0 && lobby.status === 'battling') {
+          socket.broadcast.emit('opponent_reconnected', { sessionId: data.sessionId });
+        }
       } catch (err: any) {
         socket.emit('error', { message: err.message });
       }
@@ -109,7 +108,6 @@ export const setupSocketControllers = (io: Server) => {
           }
         }
       } catch (err: any) {
-        console.error('Turn timeout error:', err.message);
       }
     });
 
@@ -117,8 +115,7 @@ export const setupSocketControllers = (io: Server) => {
       try {
         const lobby = await disconnect.execute(socket.id);
         if (lobby) {
-          if (lobby.players.every(p => !p.isConnected) && lobby.status === 'battling') {
-            console.log("All players disconnected during battle. Instant reset.");
+          if (lobby.players.every(p => !p.isConnected) && (lobby.status === 'battling' || lobby.status === 'ready')) {
             const freshLobby = await lobbyRepo.hardReset();
             syncLobbyState(freshLobby);
           } else {
@@ -127,7 +124,6 @@ export const setupSocketControllers = (io: Server) => {
           socket.broadcast.emit('opponent_disconnected', { socketId: socket.id });
         }
       } catch (err) {
-        console.error('Error on disconnect:', err);
       }
     });
   });
