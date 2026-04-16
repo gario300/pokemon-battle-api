@@ -77,9 +77,31 @@ npx vitest run
 
 ---
 
-## 🌟 Key Features
+## 🔌 Socket.IO Interface
 
-- **Automated Lifecycle:** The server automatically resets the lobby document immediately after a match concludes, ensuring no "zombie" states.
-- **Fair Play Victory Logic:** If the 60-second turn timer expires, the server declares a winner based on player presence. The player who stayed in the game always wins over a disconnected opponent.
-- **Atomic Attacks:** Logical locks prevent race conditions during concurrent turn processing.
-- **Resilient Sockets:** Handles disconnections by preserving state in MongoDB. If all players leave, the lobby is instantly cleared.
+The application follows an event-driven architecture for real-time synchronization.
+
+### Client-to-Server (Inputs)
+- `join_lobby`: Join or reconnect to a lobby with `sessionId` and `nickname`.
+- `assign_pokemon`: Requests a randomized team of 3 unique Pokémon.
+- `reassign_pokemon`: Requests a new randomized team (resets ready status).
+- `ready`: Confirms the team is ready for battle.
+- `attack`: Executes an attack during the player's turn.
+- `turn_timeout`: Signals that the current turn's timer has reached zero.
+
+### Server-to-Client (Outputs)
+- `lobby_status`: Pushes the full `Lobby` object state after any change.
+- `battle_start`: Signals the official beginning of a match.
+- `turn_result`: Pushes the result of an attack (damage, fainted status).
+- `opponent_disconnected`: Notifies a player that their rival has left.
+- `opponent_reconnected`: Notifies a player that their rival has returned.
+- `error`: Sends error messages to specific clients.
+
+---
+
+## 🌟 Key Features & Patterns
+
+- **Automated Lifecycle (Self-Cleaning):** The server implements an atomic "Match End" cycle. Once a winner is declared, the lobby state is broadcasted as `finished`, and the document is immediately reset to `waiting` to keep the lobby permanently available without manual intervention.
+- **Fair Play Victory Logic:** Implemented in `FinishByTimeoutUseCase`. When a timer expires, the server validates player presence. If one player is disconnected, the victory is awarded to the player who remained in the match.
+- **Atomic Concurrence (Mutex):** Uses MongoDB's `findOneAndUpdate` to implement a logical lock (`isProcessingTurn`) during turn processing, preventing race conditions.
+- **Resilient Sockets:** Uses a `sessionId` persistence pattern. If a socket disconnects, the player's state is preserved, allowing seamless reconnection to the active match.
